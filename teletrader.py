@@ -24,7 +24,7 @@ def place_buy(lot: float, sl: float, tp: float,elow:float,ehigh:float):
         return
 
     # Check if symbol is available/
-    symbol = "BTCUSD"
+    symbol = "XAUUSD"
     if not mt5.symbol_select(symbol, True):
         print(f"Symbol {symbol} not found.")
         mt5.shutdown()
@@ -64,7 +64,7 @@ def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float):
         return
 
     # Check if symbol is available/
-    symbol = "BTCUSD"
+    symbol = "XAUUSD"
     if not mt5.symbol_select(symbol, True):
         print(f"Symbol {symbol} not found.")
         mt5.shutdown()
@@ -133,7 +133,7 @@ async def handler(event):
 
     elif(entry_match_buy and (entry_match_sell is None)):
         print("Buy call detected\n")
-        result = place_buy(lot= 0.01, sl=sl,tp=tp,elow=entry_low,ehigh=entry_high)
+        result = place_buy(lot= 0.1, sl=sl,tp=tp,elow=entry_low,ehigh=entry_high)
 
         if(result is not None):
             print(result.retcode)
@@ -142,7 +142,7 @@ async def handler(event):
 
     elif((entry_match_buy is None) and entry_match_sell):
         print("Sell call detected\n")
-        result = place_sell(lot=0.01,sl=sl,tp=tp,elow=entry_low,ehigh=entry_high)
+        result = place_sell(lot=0.1,sl=sl,tp=tp,elow=entry_low,ehigh=entry_high)
 
         if(result is not None):
             print(result.retcode)
