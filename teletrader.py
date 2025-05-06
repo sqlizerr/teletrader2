@@ -5,6 +5,7 @@ import MetaTrader5 as mt5
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
+import time
 
 load_dotenv()
 
@@ -17,47 +18,58 @@ channel_username = os.getenv('CHANNEL_USERNAME')  # Use @channel or ID
 mt5.initialize()
 mt5.login(os.getenv('MT_LOGIN'), password=os.getenv('MT_PASS'),server='OctaFX-Demo')
 
-def place_buy(lot: float, sl: float, tp: float,elow:float,ehigh:float):
+def place_buy(lot: float, sl: float, tp: float, elow: float, ehigh: float, timeout_sec: int = 300):
     # Initialize MT5
     if not mt5.initialize():
         print("Failed to initialize MT5:", mt5.last_error())
-        return
+        return None
 
-    # Check if symbol is available/
+    # Check symbol availability
     symbol = "XAUUSD"
     if not mt5.symbol_select(symbol, True):
         print(f"Symbol {symbol} not found.")
         mt5.shutdown()
-        return
+        return None
 
-    # Create pending Buy Limit order
-    point = mt5.symbol_info(symbol).point
-    price = mt5.symbol_info_tick(symbol).ask
-    deviation = 20
-    request = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": symbol,
-        "volume": lot,
-        "type": mt5.ORDER_TYPE_BUY,
-        "price": price,
-        "sl": sl,
-        "tp": tp,
-        "deviation": deviation,
-        "magic": 234000,
-        "comment": "xauusd execute BUY",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_FOK,
-    }
+    start_time = time.time()
+    deviation = 20  # Max acceptable slippage (adjust if needed)
 
-    # Send order
-    if(elow<price<ehigh):
-        result = mt5.order_send(request)
-    else:
-        result = None
-    # Handle result
-    return result
+    while True:
+        # Break if timeout reached
+        if time.time() - start_time > timeout_sec:
+            print("Timeout: Price did not enter the range within", timeout_sec, "seconds.")
+            mt5.shutdown()
+            return None
+
+        # Get current ask price
+        tick = mt5.symbol_info_tick(symbol)
+        price = tick.ask
+
+        # Check if price is in range
+        if (elow-1.0) <= price <= (ehigh-1.0):
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": symbol,
+                "volume": lot,
+                "type": mt5.ORDER_TYPE_BUY,
+                "price": price,
+                "sl": sl,
+                "tp": tp,
+                "deviation": deviation,
+                "magic": 234000,
+                "comment": "xauusd execute BUY (Triggered)",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_FOK,
+            }
+            result = mt5.order_send(request)
+            mt5.shutdown()
+            return result
+
+        # Wait before next check (avoid excessive API calls)
+        time.sleep(1)  # Adjust sleep time as needed (e.g., 0.5s for faster checks)
+
     
-def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float):
+def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float,timeout_sec: int =300):
     # Initialize MT5
     if not mt5.initialize():
         print("Failed to initialize MT5:", mt5.last_error())
@@ -69,34 +81,43 @@ def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float):
         print(f"Symbol {symbol} not found.")
         mt5.shutdown()
         return
-
-    # Create pending Buy Limit order
-    point = mt5.symbol_info(symbol).point
-    price = mt5.symbol_info_tick(symbol).ask
+    
+    start_time = time.time()
     deviation = 20
-    request = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": symbol,
-        "volume": lot,
-        "type": mt5.ORDER_TYPE_SELL,
-        "price": price,
-        "sl": sl,
-        "tp": tp,
-        "deviation": deviation,
-        "magic": 234000,
-        "comment": "xauusd execute SELL",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_FOK,
-    }
 
-    # Send order
-    if(elow<price<ehigh):
-        result = mt5.order_send(request)
-    else:
-        result = None
+    while True:
+        # Break if timeout reached
+        if time.time() - start_time > timeout_sec:
+            print("Timeout: Price did not enter the range within", timeout_sec, "seconds.")
+            mt5.shutdown()
+            return None
 
-    # Handle result
-    return result
+        # Get current ask price
+        tick = mt5.symbol_info_tick(symbol)
+        price = tick.bid
+
+        # Check if price is in range
+        if (elow-1.0) <= price <= (ehigh-1.0):
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": symbol,
+                "volume": lot,
+                "type": mt5.ORDER_TYPE_SELL,
+                "price": price,
+                "sl": sl,
+                "tp": tp,
+                "deviation": deviation,
+                "magic": 234000,
+                "comment": "xauusd execute SELL (Triggered)",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_FOK,
+            }
+            result = mt5.order_send(request)
+            mt5.shutdown()
+            return result
+
+        # Wait before next check (avoid excessive API calls)
+        time.sleep(1)
     
 client = TelegramClient('session_name', api_id, api_hash)
 
