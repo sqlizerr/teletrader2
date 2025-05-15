@@ -46,7 +46,7 @@ def place_buy(lot: float, sl: float, tp: float, elow: float, ehigh: float, timeo
         price = tick.ask
 
         # Check if price is in range
-        if (elow-1.0) <= price <= (ehigh-1.0):
+        if (elow) <= price <= (ehigh):
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
@@ -97,7 +97,7 @@ def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float,timeout_s
         price = tick.bid
 
         # Check if price is in range
-        if (elow-1.0) <= price <= (ehigh-1.0):
+        if (elow) <= price <= (ehigh):
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
