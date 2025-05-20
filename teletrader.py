@@ -18,35 +18,57 @@ channel_username = os.getenv('CHANNEL_USERNAME')  # Use @channel or ID
 mt5.initialize()
 mt5.login(os.getenv('MT_LOGIN'), password=os.getenv('MT_PASS'),server='OctaFX-Demo')
 
+
+import threading
+
+
 def place_buy(lot: float, sl: float, tp: float, elow: float, ehigh: float, timeout_sec: int = 300):
-    # Initialize MT5
-    if not mt5.initialize():
-        print("Failed to initialize MT5:", mt5.last_error())
+    # Initialize MT5 (retry if connection drops)
+    def init_mt5():
+        if not mt5.initialize():
+            print("❌ MT5 Initialize Failed:", mt5.last_error())
+            return False
+        return True
+
+    if not init_mt5():
         return None
 
-    # Check symbol availability
     symbol = "XAUUSD"
-    if not mt5.symbol_select(symbol, True):
-        print(f"Symbol {symbol} not found.")
-        mt5.shutdown()
-        return None
+    deviation = 20  # Max slippage
+    last_valid_tick_time = 0  # Track freshest tick timestamp
 
     start_time = time.time()
-    deviation = 20  # Max acceptable slippage (adjust if needed)
+    price_entered_range = False
 
-    while True:
-        # Break if timeout reached
-        if time.time() - start_time > timeout_sec:
-            print("Timeout: Price did not enter the range within", timeout_sec, "seconds.")
+    while time.time() - start_time <= timeout_sec:
+        # Refresh MT5 connection every 30 sec to avoid stale data
+        if int(time.time() - start_time) % 30 == 0:
             mt5.shutdown()
-            return None
+            if not init_mt5():
+                break
 
-        # Get current ask price
         tick = mt5.symbol_info_tick(symbol)
-        price = tick.ask
+        if tick is None:
+            print("⚠️ No tick data. Retrying...")
+            time.sleep(0.1)
+            continue
 
-        # Check if price is in range
-        if (elow) <= price <= (ehigh):
+        # Skip stale ticks (older than 2 seconds)
+        current_time_msc = int(time.time() * 1000)
+        if (current_time_msc - tick.time_msc) > 2000:
+            print(f"⚠️ Stale tick (Age: {current_time_msc - tick.time_msc}ms). Skipping...")
+            time.sleep(0.05)
+            continue
+
+        price = tick.ask
+        print(f"Price: {price} (Range: {elow}-{ehigh}) | Time Left: {int(timeout_sec - (time.time() - start_time))}s")
+
+        # Dynamic timeout extension if price is "close" to range
+        if abs(price - elow) < 1.0 or abs(price - ehigh) < 1.0:
+            timeout_sec += 10  # Add 10 sec if nearing range
+
+        # Execute if price is in range
+        if elow <= price <= ehigh:
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
@@ -57,16 +79,24 @@ def place_buy(lot: float, sl: float, tp: float, elow: float, ehigh: float, timeo
                 "tp": tp,
                 "deviation": deviation,
                 "magic": 234000,
-                "comment": "xauusd execute BUY (Triggered)",
+                "comment": "xauusd BUY (Auto-Triggered)",
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_FOK,
+                "type_filling": mt5.ORDER_FILLING_FOK,  # Allow partial fills
             }
-            result = mt5.order_send(request)
-            mt5.shutdown()
-            return result
 
-        # Wait before next check (avoid excessive API calls)
-        time.sleep(1)  # Adjust sleep time as needed (e.g., 0.5s for faster checks)
+            result = mt5.order_send(request)
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(f"✅ BUY Executed! Ticket: {result.order}")
+                mt5.shutdown()
+                return result
+            else:
+                print(f"❌ Order Failed: {getattr(result, 'comment', 'No response')}")
+
+        time.sleep(0.05)  # Check 20x/sec
+
+    print("⚠️ Timeout: Price never entered range.")
+    mt5.shutdown()
+    return None
 
     
 def place_sell(lot: float, sl: float, tp: float,elow:float,ehigh:float,timeout_sec: int =300):
@@ -132,8 +162,8 @@ async def handler(event):
 
 
     if(entry_match_buy and (entry_match_sell is None)):
-        entry_high = float(entry_match_buy.group(1))
-        entry_low = float(entry_match_buy.group(2))
+        entry_high = max(float(entry_match_buy.group(1)),float(entry_match_buy.group(2)))
+        entry_low = min(float(entry_match_buy.group(1)),float(entry_match_buy.group(2)))
     elif((entry_match_buy is None) and entry_match_sell):
         entry_low = float(entry_match_sell.group(1))
         entry_high = float(entry_match_sell.group(2))
